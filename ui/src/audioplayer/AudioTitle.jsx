@@ -55,12 +55,7 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
   }
 
   return (
-    <a
-      href="#"
-      onClick={handleClick}
-      className={className}
-      ref={dragSongRef}
-    >
+    <a href="#" onClick={handleClick} className={className} ref={dragSongRef}>
       <span>
         <span className={clsx(classes.songTitle, 'songTitle')}>{title}</span>
         {isDesktop && (
