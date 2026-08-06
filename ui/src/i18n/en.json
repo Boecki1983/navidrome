@@ -665,6 +665,13 @@
       "shufflePlay": "Shuffle"
     }
   },
+  "nowPlayingOverlay": {
+    "close": "Close",
+    "lyrics": "Lyrics",
+    "noLyrics": "No lyrics",
+    "aboutArtist": "About the artist",
+    "upNext": "Up next"
+  },
   "about": {
     "links": {
       "homepage": "Home page",
