@@ -23,6 +23,7 @@ import share from './share'
 import library from './library'
 import plugin from './plugin'
 import { Player } from './audioplayer'
+import NowPlayingOverlay from './layout/NowPlayingOverlay'
 import customRoutes from './routes'
 import {
   libraryReducer,
@@ -182,6 +183,7 @@ const Admin = (props) => {
         <Resource name="insights" />,
         <Resource name="config" />,
         <Player />,
+        <NowPlayingOverlay key="now-playing-overlay" />,
       ]}
     </RAAdmin>
   )
