@@ -25,6 +25,7 @@ import {
   setTranscodingProfile,
   setVolume,
   syncQueue,
+  openNowPlayingOverlay,
 } from '../actions'
 import PlayerToolbar from './PlayerToolbar'
 import { sendNotification } from '../utils'
@@ -365,11 +366,14 @@ const Player = () => {
     [dispatch, dataProvider, currentTrackId],
   )
 
-  const onCoverClick = useCallback((mode, audioLists, audioInfo) => {
-    if (mode === 'full' && audioInfo?.song?.albumId) {
-      window.location.href = `#/album/${audioInfo.song.albumId}/show`
-    }
-  }, [])
+  const onCoverClick = useCallback(
+    (mode) => {
+      if (mode === 'full') {
+        dispatch(openNowPlayingOverlay())
+      }
+    },
+    [dispatch],
+  )
 
   const onAudioError = useCallback(
     (error, currentPlayId, audioLists, audioInfo) => {

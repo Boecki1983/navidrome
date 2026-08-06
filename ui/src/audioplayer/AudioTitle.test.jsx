@@ -11,13 +11,9 @@ vi.mock('@material-ui/core', async () => {
   }
 })
 
-vi.mock('react-router-dom', () => ({
-  // eslint-disable-next-line react/display-name
-  Link: React.forwardRef(({ to, children, ...props }, ref) => (
-    <a href={to} ref={ref} {...props}>
-      {children}
-    </a>
-  )),
+const mockDispatch = vi.fn()
+vi.mock('react-redux', () => ({
+  useDispatch: () => mockDispatch,
 }))
 
 vi.mock('react-dnd', () => ({
@@ -37,22 +33,32 @@ describe('<AudioTitle />', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockDispatch.mockClear()
   })
 
-  it('links to playlist when playlistId is provided', () => {
+  it('renders the track title and opens the overlay on click', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
     const audioInfo = { trackId: 'track-1', song: baseSong }
     render(<AudioTitle audioInfo={audioInfo} gainInfo={{}} isMobile={false} />)
-    const link = screen.getByRole('link')
-    expect(link.getAttribute('href')).toBe('/playlist/playlist-1/show')
+    expect(screen.getByText('Test Song')).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByText('Test Song'))
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'PLAYER_SET_OVERLAY_OPEN' }),
+    )
   })
 
-  it('falls back to album link when no playlistId', () => {
-    const audioInfo = {
-      trackId: 'track-1',
-      song: { ...baseSong, playlistId: undefined },
-    }
+  it('dispatches openNowPlayingOverlay instead of navigating when clicked', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const audioInfo = { trackId: 'track-1', song: baseSong }
     render(<AudioTitle audioInfo={audioInfo} gainInfo={{}} isMobile={false} />)
-    const link = screen.getByRole('link')
-    expect(link.getAttribute('href')).toBe('/album/album-1/show')
+
+    const user = userEvent.setup()
+    await user.click(screen.getByText('Test Song'))
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'PLAYER_SET_OVERLAY_OPEN' }),
+    )
   })
 })

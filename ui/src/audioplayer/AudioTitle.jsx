@@ -1,9 +1,10 @@
 import React from 'react'
 import { useMediaQuery } from '@material-ui/core'
-import { Link } from 'react-router-dom'
+import { useDispatch } from 'react-redux'
 import clsx from 'clsx'
 import { QualityInfo } from '../common'
 import { decisionService } from '../transcode'
+import { openNowPlayingOverlay } from '../actions'
 import useStyle from './styles'
 import { useDrag } from 'react-dnd'
 import { DraggableTypes } from '../consts'
@@ -12,6 +13,7 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
   const classes = useStyle()
   const className = classes.audioTitle
   const isDesktop = useMediaQuery('(min-width:810px)')
+  const dispatch = useDispatch()
 
   const song = audioInfo.song
   const [, dragSongRef] = useDrag(
@@ -47,14 +49,18 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
   const subtitle = song.tags?.['subtitle']
   const title = song.title + (subtitle ? ` (${subtitle})` : '')
 
-  const linkTo = audioInfo.isRadio
-    ? `/radio/${audioInfo.trackId}/show`
-    : song.playlistId
-      ? `/playlist/${song.playlistId}/show`
-      : `/album/${song.albumId}/show`
+  const handleClick = (e) => {
+    e.preventDefault()
+    dispatch(openNowPlayingOverlay())
+  }
 
   return (
-    <Link to={linkTo} className={className} ref={dragSongRef}>
+    <a
+      href="#"
+      onClick={handleClick}
+      className={className}
+      ref={dragSongRef}
+    >
       <span>
         <span className={clsx(classes.songTitle, 'songTitle')}>{title}</span>
         {isDesktop && (
@@ -83,7 +89,7 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
           {song.year ? ` - ${song.year}` : ''}
         </span>
       )}
-    </Link>
+    </a>
   )
 })
 
