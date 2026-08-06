@@ -113,12 +113,19 @@ describe('<NowPlayingOverlay />', () => {
     const store = createStore(
       (
         state = {
-          player: { overlayOpen: true, queue: [item], current: { uuid: 'u1', song: item.song } },
+          player: {
+            overlayOpen: true,
+            queue: [item],
+            current: { uuid: 'u1', song: item.song },
+          },
         },
         action,
       ) =>
         action.type === 'PLAYER_SET_OVERLAY_OPEN'
-          ? { ...state, player: { ...state.player, overlayOpen: action.data.open } }
+          ? {
+              ...state,
+              player: { ...state.player, overlayOpen: action.data.open },
+            }
           : state,
     )
     render(
