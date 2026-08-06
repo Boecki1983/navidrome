@@ -426,6 +426,39 @@ export default {
         height: 'initial',
       },
     },
+    MuiRating: {
+      iconFilled: {
+        color: '#ffd700 !important',
+      },
+      iconHover: {
+        color: '#ffd700 !important',
+      },
+    },
+    NDLoveButton: {
+      love: {
+        color: '#ff0000 !important',
+      },
+    },
+    RaMenuItemLink: {
+      root: {
+        color: '#b3b3b3',
+        '& .MuiListItemIcon-root': {
+          color: '#b3b3b3',
+        },
+        '&[aria-current="page"]': {
+          color: '#fff !important',
+        },
+        '&[aria-current="page"] .MuiListItemIcon-root': {
+          color: `${spotifyGreen['500']} !important`,
+        },
+      },
+      active: {
+        color: '#fff !important',
+        '& .MuiListItemIcon-root': {
+          color: `${spotifyGreen['500']} !important`,
+        },
+      },
+    },
   },
   player: {
     theme: 'dark',
