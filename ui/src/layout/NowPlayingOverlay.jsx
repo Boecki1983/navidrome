@@ -12,8 +12,15 @@ import { SafeHTML } from '../common/SafeHTML'
 const useStyles = makeStyles((theme) => ({
   root: {
     position: 'fixed',
-    inset: 0,
-    zIndex: theme.zIndex.modal + 1,
+    top: 0,
+    left: 0,
+    right: 0,
+    // Leave the mini player bar (.music-player-panel, height: 80px, fixed
+    // to the bottom, z-index: 99) visible and interactive underneath so
+    // playback position/seek/play-pause controls stay reachable while the
+    // overlay is open.
+    bottom: 80,
+    zIndex: 90,
     overflowY: 'auto',
     background: 'linear-gradient(#1d1d1d, #121212)',
     color: '#fff',
