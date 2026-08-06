@@ -4,6 +4,7 @@ import {
   PLAYER_SYNC_QUEUE,
   PLAYER_CURRENT,
   PLAYER_REFRESH_QUEUE,
+  PLAYER_SET_OVERLAY_OPEN,
 } from '../actions'
 
 describe('playerReducer', () => {
@@ -222,6 +223,29 @@ describe('playerReducer', () => {
       const action = { type: PLAYER_REFRESH_QUEUE, data: {} }
       const result = playerReducer(state, action)
       expect(result.playIndex).toBe(0)
+    })
+  })
+
+  describe('overlayOpen flag', () => {
+    it('defaults to false', () => {
+      const result = playerReducer(undefined, { type: '@@INIT' })
+      expect(result.overlayOpen).toBe(false)
+    })
+
+    it('opens the overlay', () => {
+      const result = playerReducer(
+        { queue: [], current: {}, clear: false, volume: 1, overlayOpen: false },
+        { type: PLAYER_SET_OVERLAY_OPEN, data: { open: true } },
+      )
+      expect(result.overlayOpen).toBe(true)
+    })
+
+    it('closes the overlay', () => {
+      const result = playerReducer(
+        { queue: [], current: {}, clear: false, volume: 1, overlayOpen: true },
+        { type: PLAYER_SET_OVERLAY_OPEN, data: { open: false } },
+      )
+      expect(result.overlayOpen).toBe(false)
     })
   })
 })

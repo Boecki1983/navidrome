@@ -12,6 +12,7 @@ import {
   PLAYER_SYNC_QUEUE,
   PLAYER_SET_MODE,
   PLAYER_REFRESH_QUEUE,
+  PLAYER_SET_OVERLAY_OPEN,
 } from '../actions'
 import config from '../config'
 
@@ -21,6 +22,7 @@ const initialState = {
   clear: false,
   volume: config.defaultUIVolume / 100,
   savedPlayIndex: 0,
+  overlayOpen: false,
 }
 
 const pad = (value) => {
@@ -208,6 +210,11 @@ const reduceMode = (state, { data: { mode } }) => {
   }
 }
 
+const reduceSetOverlayOpen = (state, { data: { open } }) => ({
+  ...state,
+  overlayOpen: open,
+})
+
 export const playerReducer = (previousState = initialState, payload) => {
   const { type } = payload
   switch (type) {
@@ -245,6 +252,8 @@ export const playerReducer = (previousState = initialState, payload) => {
           previousState.savedPlayIndex >= 0 ? previousState.savedPlayIndex : 0,
       }
     }
+    case PLAYER_SET_OVERLAY_OPEN:
+      return reduceSetOverlayOpen(previousState, payload)
     default:
       return previousState
   }
