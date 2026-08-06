@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import { useMediaQuery, withWidth } from '@material-ui/core'
 import {
   useShowController,
@@ -9,7 +8,7 @@ import {
   Pagination,
   Title as RaTitle,
 } from 'react-admin'
-import subsonic from '../subsonic'
+import { useArtistInfo } from './useArtistInfo'
 import AlbumGridView from '../album/AlbumGridView'
 import MobileArtistDetails from './MobileArtistDetails'
 import DesktopArtistDetails from './DesktopArtistDetails'
@@ -58,24 +57,8 @@ const ArtistDetails = (props) => {
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('sm'), {
     noSsr: true,
   })
-  const [artistInfo, setArtistInfo] = useState()
-
+  const artistInfo = useArtistInfo(record.id)
   const biography = artistInfo?.biography || record.biography
-
-  useEffect(() => {
-    subsonic
-      .getArtistInfo(record.id)
-      .then((resp) => resp.json['subsonic-response'])
-      .then((data) => {
-        if (data.status === 'ok') {
-          setArtistInfo(data.artistInfo)
-        }
-      })
-      .catch((e) => {
-        // eslint-disable-next-line no-console
-        console.error('error on artist page', e)
-      })
-  }, [record.id])
 
   const Component = isDesktop ? DesktopArtistDetails : MobileArtistDetails
   return (
