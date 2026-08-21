@@ -225,12 +225,13 @@ func (api *Router) scrobblerNowPlaying(ctx context.Context, trackId string, posi
 
 	log.Info(ctx, "Now Playing", "title", mf.Title, "artist", mf.Artist, "user", username, "player", player.Name, "position", position)
 	return api.scrobbler.ReportPlayback(ctx, scrobbler.ReportPlaybackParams{
-		MediaId:      trackId,
-		PositionMs:   int64(position) * 1000,
-		State:        scrobbler.StatePlaying,
-		PlaybackRate: 1.0,
-		ClientId:     clientId,
-		ClientName:   client,
+		MediaId:          trackId,
+		PositionMs:       int64(position) * 1000,
+		State:            scrobbler.StatePlaying,
+		PlaybackRate:     1.0,
+		LegacyNowPlaying: true,
+		ClientId:         clientId,
+		ClientName:       client,
 	})
 }
 

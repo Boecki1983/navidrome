@@ -98,6 +98,7 @@ var _ = Describe("MediaAnnotationController", func() {
 				Expect(playTracker.ReportedPlayback[0].MediaId).To(Equal("12"))
 				Expect(playTracker.ReportedPlayback[0].State).To(Equal(scrobbler.StatePlaying))
 				Expect(playTracker.ReportedPlayback[0].ClientId).To(Equal("player-1"))
+				Expect(playTracker.ReportedPlayback[0].LegacyNowPlaying).To(BeTrue())
 			})
 		})
 	})
