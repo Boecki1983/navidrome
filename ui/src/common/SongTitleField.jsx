@@ -13,6 +13,8 @@ const useStyles = makeStyles({
   icon: {
     width: '32px',
     height: '32px',
+    filter:
+      'brightness(0) saturate(100%) invert(61%) sepia(13%) saturate(1589%) hue-rotate(73deg) brightness(91%) contrast(86%)',
     verticalAlign: 'text-top',
     marginLeft: '-8px',
     marginTop: '-7px',
