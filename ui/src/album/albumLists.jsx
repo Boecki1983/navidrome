@@ -4,8 +4,6 @@ import LibraryAddIcon from '@material-ui/icons/LibraryAdd'
 import VideoLibraryIcon from '@material-ui/icons/VideoLibrary'
 import RepeatIcon from '@material-ui/icons/Repeat'
 import AlbumIcon from '@material-ui/icons/Album'
-import FavoriteIcon from '@material-ui/icons/Favorite'
-import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder'
 import StarIcon from '@material-ui/icons/Star'
 import StarBorderIcon from '@material-ui/icons/StarBorder'
 import AlbumOutlinedIcon from '@material-ui/icons/AlbumOutlined'
@@ -29,18 +27,6 @@ const albumLists = {
     icon: <ShuffleIcon />,
     params: 'sort=random&order=ASC&filter={}',
   },
-  ...(config.enableFavourites && {
-    starred: {
-      icon: (
-        <DynamicMenuIcon
-          path={'album/starred'}
-          icon={FavoriteBorderIcon}
-          activeIcon={FavoriteIcon}
-        />
-      ),
-      params: 'sort=starred_at&order=DESC&filter={"starred":true}',
-    },
-  }),
   ...(config.enableStarRating && {
     topRated: {
       icon: (
