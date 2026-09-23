@@ -28,7 +28,7 @@ describe('useArtistInfo', () => {
       },
     })
 
-    const { result } = renderHook(() => useArtistInfo('artist-1'))
+    const { result } = renderHook(() => useArtistInfo({ id: 'artist-1' }))
 
     await waitFor(() =>
       expect(result.current).toEqual({ biography: 'A great band.' }),
@@ -41,7 +41,7 @@ describe('useArtistInfo', () => {
       json: { 'subsonic-response': { status: 'failed' } },
     })
 
-    const { result } = renderHook(() => useArtistInfo('artist-1'))
+    const { result } = renderHook(() => useArtistInfo({ id: 'artist-1' }))
 
     await waitFor(() => expect(subsonic.getArtistInfo).toHaveBeenCalled())
     expect(result.current).toBeUndefined()

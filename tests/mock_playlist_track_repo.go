@@ -13,7 +13,9 @@ type MockPlaylistTrackRepo struct {
 	DeletedIds []string
 	Reordered  bool
 	AddCount   int
+	InsertPos  int
 	Err        error
+	AlbumIDs   []string // stubbed result for GetAlbumIDs, ignoring options
 }
 
 func (m *MockPlaylistTrackRepo) SetData(tracks model.PlaylistTracks) {
@@ -66,6 +68,13 @@ func (m *MockPlaylistTrackRepo) GetCursor(options ...model.QueryOptions) (model.
 	}, nil
 }
 
+func (m *MockPlaylistTrackRepo) GetAlbumIDs(...model.QueryOptions) ([]string, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return m.AlbumIDs, nil
+}
+
 func (m *MockPlaylistTrackRepo) GetMediaFileIDs(options ...model.QueryOptions) ([]string, error) {
 	if m.Err != nil {
 		return nil, m.Err
@@ -79,6 +88,11 @@ func (m *MockPlaylistTrackRepo) Add(ids []string) (int, error) {
 		return 0, m.Err
 	}
 	return m.AddCount, nil
+}
+
+func (m *MockPlaylistTrackRepo) Insert(ids []string, pos int) (int, error) {
+	m.InsertPos = pos
+	return m.Add(ids)
 }
 
 func (m *MockPlaylistTrackRepo) AddAlbums(_ []string) (int, error) {

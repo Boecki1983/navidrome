@@ -6,7 +6,6 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/artwork"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/core/playlists"
@@ -53,8 +52,8 @@ var _ = Describe("Multi-Library Support", Ordered, func() {
 		adminWithLibs = *loadedAdmin
 
 		// Run incremental scan to import lib2 content (lib1 files unchanged → skipped)
-		s := scanner.New(ctx, ds, artwork.NoopCacheWarmer(), events.NoopBroker(),
-			playlists.NewPlaylists(ds, core.NewImageUploadService()), metrics.NewNoopInstance())
+		s := scanner.New(ctx, ds, events.NoopBroker(),
+			playlists.NewPlaylists(ds, artwork.NewUploader(ds)), metrics.NewNoopInstance())
 		_, err = s.ScanAll(ctx, false)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -224,6 +223,24 @@ var _ = Describe("Multi-Library Support", Ordered, func() {
 			// The playlist has 2 songs total, but the non-admin user only has access to lib1
 			Expect(resp.Playlist.Entry).To(HaveLen(1))
 			Expect(resp.Playlist.Entry[0].Id).To(Equal(lib1SongID))
+		})
+
+		It("non-admin user cannot store a song from another library through createPlaylist", func() {
+			resp := doReqWithUser(userLib1Only, "createPlaylist",
+				"name", "Restricted Playlist", "songId", lib1SongID, "songId", lib2SongID)
+			Expect(resp.Status).To(Equal(responses.StatusOK))
+			ownID := resp.Playlist.Id
+
+			stored := doReqWithUser(adminWithLibs, "getPlaylist", "id", ownID)
+			Expect(stored.Playlist.Entry).To(HaveLen(1), "the lib2 song must not be persisted")
+			Expect(stored.Playlist.Entry[0].Id).To(Equal(lib1SongID))
+
+			By("replacing the tracks of the same playlist")
+			resp = doReqWithUser(userLib1Only, "createPlaylist", "playlistId", ownID, "songId", lib2SongID)
+			Expect(resp.Status).To(Equal(responses.StatusOK))
+
+			stored = doReqWithUser(adminWithLibs, "getPlaylist", "id", ownID)
+			Expect(stored.Playlist.Entry).To(BeEmpty())
 		})
 	})
 
