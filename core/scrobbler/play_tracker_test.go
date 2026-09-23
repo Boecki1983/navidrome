@@ -1444,6 +1444,14 @@ var _ = DescribeTable("remainingTTL",
 	Entry("zero duration", float32(0), int64(0), 1.0, 5*time.Second),
 )
 
+var _ = DescribeTable("legacyNowPlayingTTL",
+	func(durationSec float32, positionMs int64, rate float64, expected time.Duration) {
+		Expect(legacyNowPlayingTTL(durationSec, positionMs, rate)).To(Equal(expected))
+	},
+	Entry("caps a long track", float32(3600), int64(0), 1.0, 30*time.Second),
+	Entry("does not extend a short track", float32(10), int64(0), 1.0, 15*time.Second),
+)
+
 type fakeScrobbler struct {
 	Authorized           bool
 	nowPlayingCalled     atomic.Bool

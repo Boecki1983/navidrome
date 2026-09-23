@@ -58,13 +58,14 @@ type Submission struct {
 }
 
 type ReportPlaybackParams struct {
-	MediaId        string
-	PositionMs     int64
-	State          string
-	PlaybackRate   float64
-	IgnoreScrobble bool
-	ClientId       string
-	ClientName     string
+	MediaId          string
+	PositionMs       int64
+	State            string
+	PlaybackRate     float64
+	IgnoreScrobble   bool
+	LegacyNowPlaying bool
+	ClientId         string
+	ClientName       string
 }
 
 type nowPlayingEntry struct {
@@ -273,6 +274,10 @@ func remainingTTL(durationSec float32, positionMs int64, rate float64) time.Dura
 	return time.Duration(remainingSec+5) * time.Second
 }
 
+func legacyNowPlayingTTL(durationSec float32, positionMs int64, rate float64) time.Duration {
+	return min(remainingTTL(durationSec, positionMs, rate), 30*time.Second)
+}
+
 func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackParams) error {
 	player, _ := request.PlayerFrom(ctx)
 	user, _ := request.UserFrom(ctx)
@@ -318,7 +323,11 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 			log.Trace(ctx, "Ignoring out-of-order starting report for playing session", "clientId", clientId, "mediaId", params.MediaId)
 			return nil
 		}
-		err = p.playMap.AddWithTTL(clientId, info, remainingTTL(mf.Duration, params.PositionMs, params.PlaybackRate))
+		ttl := remainingTTL(mf.Duration, params.PositionMs, params.PlaybackRate)
+		if params.LegacyNowPlaying {
+			ttl = legacyNowPlayingTTL(mf.Duration, params.PositionMs, params.PlaybackRate)
+		}
+		err = p.playMap.AddWithTTL(clientId, info, ttl)
 		p.sessionsMu.Unlock()
 		if err != nil {
 			log.Warn(ctx, "Error adding PlaybackSession to cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, err)
@@ -350,6 +359,9 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		ttl := 30 * time.Minute
 		if params.State == StatePlaying {
 			ttl = remainingTTL(info.MediaFile.Duration, params.PositionMs, params.PlaybackRate)
+			if params.LegacyNowPlaying {
+				ttl = legacyNowPlayingTTL(info.MediaFile.Duration, params.PositionMs, params.PlaybackRate)
+			}
 		}
 		log.Trace(ctx, "Updating PlaybackSession in cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, "positionMs", params.PositionMs, "playbackRate", params.PlaybackRate, "ttl", ttl)
 		p.sessionsMu.Lock()
