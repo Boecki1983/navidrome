@@ -52,12 +52,12 @@ const useStyles = makeStyles(
   },
 )
 
-const ArtistDetails = (props) => {
+export const ArtistDetails = (props) => {
   const record = useRecordContext(props)
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('sm'), {
     noSsr: true,
   })
-  const artistInfo = useArtistInfo(record.id)
+  const artistInfo = useArtistInfo(record)
   const biography = artistInfo?.biography || record.biography
 
   const Component = isDesktop ? DesktopArtistDetails : MobileArtistDetails

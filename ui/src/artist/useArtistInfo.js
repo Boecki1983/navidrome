@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import subsonic from '../subsonic'
 
-export const useArtistInfo = (artistId) => {
+export const useArtistInfo = (record) => {
   const [artistInfo, setArtistInfo] = useState()
 
   useEffect(() => {
+    const artistId = record?.id
     if (!artistId) {
       setArtistInfo(undefined)
       return
@@ -28,7 +29,9 @@ export const useArtistInfo = (artistId) => {
     return () => {
       cancelled = true
     }
-  }, [artistId])
+    // Keyed on the record, not its id: a refreshed record must re-fetch, or the stale
+    // artistInfo state keeps winning the `||` in callers.
+  }, [record])
 
   return artistInfo
 }

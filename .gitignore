@@ -41,3 +41,10 @@ openspec/
 go.work*
 .worktrees/
 .playwright-mcp/
+
+# Temp benchmark files
+zz_*_test.go
+
+# wazero compilation cache for the plugins test suite
+/plugins/testdata/.wazero-cache/
+/plugins/testdata/*.stage/

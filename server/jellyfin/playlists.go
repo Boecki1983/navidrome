@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -17,16 +19,11 @@ import (
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
-// playlistsFolderID is the reserved id of the synthetic "playlists library" folder. Clients resolve
-// it via a ManualPlaylistsFolder query, then list playlists with ParentId set to it. The literal
-// can't collide with real ids (those are hashes).
-const playlistsFolderID = "playlists"
-
 // playlistsFolder is the item returned for a ManualPlaylistsFolder query. CollectionType must be
 // "playlists" — how the client identifies it; without it Jellify's playlist-library query loops.
 func playlistsFolder() dto.BaseItemDto {
 	return dto.BaseItemDto{
-		Id:             dto.EncodeID(playlistsFolderID),
+		Id:             dto.PlaylistsFolderGUID,
 		Name:           "Playlists",
 		Type:           "ManualPlaylistsFolder",
 		CollectionType: "playlists",
@@ -34,11 +31,11 @@ func playlistsFolder() dto.BaseItemDto {
 	}
 }
 
-// playlistError maps core/playlists write errors to HTTP status: ownership -> 403, missing/invisible
-// -> 404 (never revealing another user's private playlist), else -> 500.
+// playlistError maps core/playlists write errors to HTTP status: ownership or locked -> 403,
+// missing/invisible -> 404 (never revealing another user's private playlist), else -> 500.
 func (api *Router) playlistError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, model.ErrNotAuthorized):
+	case errors.Is(err, model.ErrNotAuthorized), errors.Is(err, model.ErrPlaylistNotEditable):
 		http.Error(w, "Forbidden", http.StatusForbidden)
 	case errors.Is(err, model.ErrNotFound):
 		http.Error(w, "Not Found", http.StatusNotFound)
@@ -61,7 +58,12 @@ func (api *Router) createPlaylist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
-	ids := api.expandContainerIDs(r.Context(), slice.Map(body.Ids, dto.DecodeID))
+	decoded, ok := dto.DecodeIDs(body.Ids)
+	if !ok {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	ids := api.expandContainerIDs(r.Context(), decoded)
 	id, err := api.playlists.Create(r.Context(), "", body.Name, ids)
 	if err != nil {
 		api.internalError(w, r, err)
@@ -80,7 +82,10 @@ type updatePlaylistRequest struct {
 
 func (api *Router) updatePlaylist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := dto.DecodeID(chi.URLParam(r, "playlistId"))
+	id, ok := itemIDParam(w, r, "playlistId")
+	if !ok {
+		return
+	}
 	var body updatePlaylistRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -96,7 +101,12 @@ func (api *Router) updatePlaylist(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		} else {
-			ids := api.expandContainerIDs(ctx, slice.Map(*body.Ids, dto.DecodeID))
+			decoded, ok := dto.DecodeIDs(*body.Ids)
+			if !ok {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				return
+			}
+			ids := api.expandContainerIDs(ctx, decoded)
 			if _, err := api.playlists.Create(ctx, id, "", ids); err != nil {
 				api.playlistError(w, r, err)
 				return
@@ -146,7 +156,7 @@ func (api *Router) playlistTrackPage(repo model.PlaylistTrackRepository, fields 
 // individually removable.
 func trackToBaseItem(t model.PlaylistTrack, fields dto.Fields) dto.BaseItemDto {
 	item := dto.SongToBaseItem(t.MediaFile, fields)
-	item.PlaylistItemId = dto.EncodeID(t.ID)
+	item.PlaylistItemId = dto.EncodePlaylistEntryID(t.ID)
 	return item
 }
 
@@ -155,7 +165,10 @@ func trackToBaseItem(t model.PlaylistTrack, fields dto.Fields) dto.BaseItemDto {
 // be probed.
 func (api *Router) getPlaylist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := dto.DecodeID(chi.URLParam(r, "playlistId"))
+	id, ok := itemIDParam(w, r, "playlistId")
+	if !ok {
+		return
+	}
 	pls, err := api.playlists.Get(ctx, id)
 	if err != nil {
 		http.Error(w, "Not Found", http.StatusNotFound)
@@ -184,7 +197,10 @@ func (api *Router) getPlaylist(w http.ResponseWriter, r *http.Request) {
 // playlist id can't probe for private playlists.
 func (api *Router) getPlaylistItems(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := dto.DecodeID(chi.URLParam(r, "playlistId"))
+	id, ok := itemIDParam(w, r, "playlistId")
+	if !ok {
+		return
+	}
 	repo, err := api.playlists.Tracks(ctx, id)
 	if err != nil {
 		http.Error(w, "Not Found", http.StatusNotFound)
@@ -232,7 +248,7 @@ func (api *Router) expandContainerIDs(ctx context.Context, ids []string) []strin
 		} else if pl, err := api.playlists.GetWithTracks(ctx, id); err == nil {
 			out = append(out, slice.Map(pl.Tracks, func(t model.PlaylistTrack) string { return t.MediaFileID })...)
 		} else {
-			out = append(out, id) // unknown id — pass through unchanged
+			out = append(out, id) // well-formed but unresolved — left for the caller's write to handle
 		}
 	}
 	return out
@@ -247,42 +263,133 @@ func (api *Router) songIDs(ctx context.Context, opts model.QueryOptions) []strin
 	return slice.Map(mfs, func(mf model.MediaFile) string { return mf.ID })
 }
 
-// addToPlaylist appends items by id, expanding containers into tracks (see expandContainerIDs).
-// AddTracks enforces ownership; any error maps to 404.
+// addToPlaylist adds items by id (containers expand to tracks), inserting at the zero-based position
+// when given. Core enforces ownership: a locked playlist maps to 403, any other error to 404.
 func (api *Router) addToPlaylist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := dto.DecodeID(chi.URLParam(r, "playlistId"))
-	ids := api.expandContainerIDs(ctx, slice.Map(queryIDs(r, "ids"), dto.DecodeID))
-	if _, err := api.playlists.AddTracks(ctx, id, ids); err != nil {
+	id, ok := itemIDParam(w, r, "playlistId")
+	if !ok {
+		return
+	}
+	decoded, ok := dto.DecodeIDs(queryIDs(r, "ids"))
+	if !ok {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	ids := api.expandContainerIDs(ctx, decoded)
+	var err error
+	if position, perr := req.Params(r).Int64("position"); perr == nil {
+		_, err = api.playlists.InsertTracks(ctx, id, ids, insertPosition(position))
+	} else {
+		_, err = api.playlists.AddTracks(ctx, id, ids)
+	}
+	if err != nil {
+		if errors.Is(err, model.ErrPlaylistNotEditable) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// insertPosition maps Jellyfin's zero-based position to a 1-based one, clamped in int64 first so
+// it can't wrap on 32-bit builds.
+func insertPosition(position int64) int {
+	return int(min(max(position, 0), math.MaxInt32-1) + 1)
 }
 
 // removeFromPlaylist removes entries by entryIds — playlist-entry ids (PlaylistItemId), not media
 // file ids, since RemoveTracks deletes playlist_tracks rows by that id. RemoveTracks enforces
-// ownership; any error maps to 404.
+// ownership; a locked playlist maps to 403, any other error to 404.
 func (api *Router) removeFromPlaylist(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id := dto.DecodeID(chi.URLParam(r, "playlistId"))
-	ids := slice.Map(queryIDs(r, "entryids"), dto.DecodeID)
+	id, ok := itemIDParam(w, r, "playlistId")
+	if !ok {
+		return
+	}
+	raw := queryIDs(r, "entryids")
+	ids := make([]string, 0, len(raw))
+	for _, entryGUID := range raw {
+		entry, ok := dto.DecodePlaylistEntryID(entryGUID)
+		if !ok {
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
+		}
+		ids = append(ids, entry)
+	}
 	if err := api.playlists.RemoveTracks(ctx, id, ids); err != nil {
+		if errors.Is(err, model.ErrPlaylistNotEditable) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// getPlaylistUsers and getPlaylistUser answer client probes (e.g. Finamp) made before allowing
-// edits. Navidrome has no per-playlist ACL, so every user is reported CanEdit; ownership is still
-// enforced by AddTracks/RemoveTracks.
+// movePlaylistItem moves an entry to Jellyfin's zero-based newIndex. Reorder clamps past-the-end
+// indexes and rejects unknown entries, which Jellyfin treats as a no-op.
+func (api *Router) movePlaylistItem(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, ok := itemIDParam(w, r, "playlistId")
+	if !ok {
+		return
+	}
+	entry, ok := dto.DecodePlaylistEntryID(chi.URLParam(r, "entryId"))
+	if !ok {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	newIndex, err := strconv.Atoi(chi.URLParam(r, "newIndex"))
+	if err != nil || newIndex < 0 {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+	// Resolve first, so a missing or hidden playlist is still a 404 below the unknown-entry no-op.
+	if _, err := api.playlists.Get(ctx, id); err != nil {
+		api.playlistError(w, r, err)
+		return
+	}
+	pos, _ := strconv.Atoi(entry)
+	err = api.playlists.ReorderTrack(ctx, id, pos, min(newIndex, math.MaxInt32-1)+1)
+	if err != nil && !errors.Is(err, model.ErrNotFound) {
+		api.playlistError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Clients probe these before offering edits. Navidrome has no per-playlist ACL, so CanEdit carries
+// only editability; ownership is enforced on write, and a lookup error 404s to prevent probing.
 func (api *Router) getPlaylistUsers(w http.ResponseWriter, r *http.Request) {
-	u, _ := request.UserFrom(r.Context())
-	api.ok(w, r, []dto.PlaylistUserPermissions{{UserId: dto.EncodeID(u.ID), CanEdit: true}})
+	ctx := r.Context()
+	id, ok := itemIDParam(w, r, "playlistId")
+	if !ok {
+		return
+	}
+	pls, err := api.playlists.Get(ctx, id)
+	if err != nil {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	u, _ := request.UserFrom(ctx)
+	api.ok(w, r, []dto.PlaylistUserPermissions{{UserId: dto.EncodeID(u.ID), CanEdit: pls.TracksEditable()}})
 }
 
 func (api *Router) getPlaylistUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, ok := itemIDParam(w, r, "playlistId")
+	if !ok {
+		return
+	}
+	pls, err := api.playlists.Get(ctx, id)
+	if err != nil {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
 	userId := chi.URLParam(r, "userId")
-	api.ok(w, r, dto.PlaylistUserPermissions{UserId: userId, CanEdit: true})
+	api.ok(w, r, dto.PlaylistUserPermissions{UserId: userId, CanEdit: pls.TracksEditable()})
 }

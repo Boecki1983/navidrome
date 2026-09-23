@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useTranslate } from 'react-admin'
 import { makeStyles } from '@material-ui/core/styles'
@@ -85,7 +85,11 @@ const NowPlayingOverlay = () => {
   const currentItem = queue.find((item) => item.uuid === current?.uuid)
   const song = current?.song || currentItem?.song
   const artistId = song?.artistId || song?.albumArtistId
-  const artistInfo = useArtistInfo(overlayOpen ? artistId : undefined)
+  const artistRecord = useMemo(
+    () => (overlayOpen && artistId ? { id: artistId } : undefined),
+    [overlayOpen, artistId],
+  )
+  const artistInfo = useArtistInfo(artistRecord)
 
   const handleClose = () => dispatch(closeNowPlayingOverlay())
 
