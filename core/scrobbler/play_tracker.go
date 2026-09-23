@@ -278,6 +278,59 @@ func legacyNowPlayingTTL(durationSec float32, positionMs int64, rate float64) ti
 	return min(remainingTTL(durationSec, positionMs, rate), 30*time.Second)
 }
 
+func sessionTTL(durationSec float32, positionMs int64, rate float64, legacy bool) time.Duration {
+	if legacy {
+		return legacyNowPlayingTTL(durationSec, positionMs, rate)
+	}
+	return remainingTTL(durationSec, positionMs, rate)
+}
+
+// handlePlaybackStart creates the playback session for a starting report. ok=false means
+// the report was consumed (out-of-order or failed) and the caller must not run the
+// post-switch NowPlaying dispatch; ok=true returns the track's filtered verdict so the
+// caller keeps one verdict per report.
+func (p *playTracker) handlePlaybackStart(ctx context.Context, params ReportPlaybackParams, user model.User, clientId, client string, now time.Time) (filtered bool, ok bool, err error) {
+	// Clients may send starting/playing unordered; a late "starting" must not downgrade
+	// a playing session, or position estimation freezes until the next report.
+	if p.hasPlayingSession(clientId, params.MediaId) {
+		log.Trace(ctx, "Ignoring out-of-order starting report for playing session", "clientId", clientId, "mediaId", params.MediaId)
+		return false, false, nil
+	}
+	mf, err := p.ds.MediaFile(ctx).GetWithParticipants(params.MediaId)
+	if err != nil {
+		return false, false, err
+	}
+	filtered = p.isFilteredOut(ctx, mf)
+	info := PlaybackSession{
+		MediaFile:    *mf,
+		filtered:     filtered,
+		Start:        now,
+		UserId:       user.ID,
+		Username:     user.UserName,
+		PlayerId:     clientId,
+		PlayerName:   client,
+		State:        params.State,
+		PositionMs:   params.PositionMs,
+		PlaybackRate: params.PlaybackRate,
+		LastReport:   now,
+	}
+	p.sessionsMu.Lock()
+	// re-check: a concurrent "playing" report may have created the session during the load above
+	if p.hasPlayingSession(clientId, params.MediaId) {
+		p.sessionsMu.Unlock()
+		log.Trace(ctx, "Ignoring out-of-order starting report for playing session", "clientId", clientId, "mediaId", params.MediaId)
+		return false, false, nil
+	}
+	ttl := sessionTTL(mf.Duration, params.PositionMs, params.PlaybackRate, params.LegacyNowPlaying)
+	err = p.playMap.AddWithTTL(clientId, info, ttl)
+	p.sessionsMu.Unlock()
+	if err != nil {
+		log.Warn(ctx, "Error adding PlaybackSession to cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, err)
+	}
+	p.enqueuePlaybackReport(ctx, info, filtered)
+	return filtered, true, nil
+}
+
 func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackParams) error {
 	player, _ := request.PlayerFrom(ctx)
 	user, _ := request.UserFrom(ctx)
@@ -292,47 +345,11 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 
 	switch params.State {
 	case StateStarting:
-		// Clients may send starting/playing unordered; a late "starting" must not downgrade
-		// a playing session, or position estimation freezes until the next report.
-		if p.hasPlayingSession(clientId, params.MediaId) {
-			log.Trace(ctx, "Ignoring out-of-order starting report for playing session", "clientId", clientId, "mediaId", params.MediaId)
-			return nil
-		}
-		mf, err := p.ds.MediaFile(ctx).GetWithParticipants(params.MediaId)
-		if err != nil {
+		startFiltered, ok, err := p.handlePlaybackStart(ctx, params, user, clientId, client, now)
+		if err != nil || !ok {
 			return err
 		}
-		filtered = p.isFilteredOut(ctx, mf)
-		info := PlaybackSession{
-			MediaFile:    *mf,
-			filtered:     filtered,
-			Start:        now,
-			UserId:       user.ID,
-			Username:     user.UserName,
-			PlayerId:     clientId,
-			PlayerName:   client,
-			State:        params.State,
-			PositionMs:   params.PositionMs,
-			PlaybackRate: params.PlaybackRate,
-			LastReport:   now,
-		}
-		p.sessionsMu.Lock()
-		// re-check: a concurrent "playing" report may have created the session during the load above
-		if p.hasPlayingSession(clientId, params.MediaId) {
-			p.sessionsMu.Unlock()
-			log.Trace(ctx, "Ignoring out-of-order starting report for playing session", "clientId", clientId, "mediaId", params.MediaId)
-			return nil
-		}
-		ttl := remainingTTL(mf.Duration, params.PositionMs, params.PlaybackRate)
-		if params.LegacyNowPlaying {
-			ttl = legacyNowPlayingTTL(mf.Duration, params.PositionMs, params.PlaybackRate)
-		}
-		err = p.playMap.AddWithTTL(clientId, info, ttl)
-		p.sessionsMu.Unlock()
-		if err != nil {
-			log.Warn(ctx, "Error adding PlaybackSession to cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, err)
-		}
-		p.enqueuePlaybackReport(ctx, info, filtered)
+		filtered = startFiltered
 
 	case StatePlaying, StatePaused:
 		info, getErr := p.playMap.Get(clientId)
@@ -358,10 +375,7 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		info.filtered = filtered
 		ttl := 30 * time.Minute
 		if params.State == StatePlaying {
-			ttl = remainingTTL(info.MediaFile.Duration, params.PositionMs, params.PlaybackRate)
-			if params.LegacyNowPlaying {
-				ttl = legacyNowPlayingTTL(info.MediaFile.Duration, params.PositionMs, params.PlaybackRate)
-			}
+			ttl = sessionTTL(info.MediaFile.Duration, params.PositionMs, params.PlaybackRate, params.LegacyNowPlaying)
 		}
 		log.Trace(ctx, "Updating PlaybackSession in cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, "positionMs", params.PositionMs, "playbackRate", params.PlaybackRate, "ttl", ttl)
 		p.sessionsMu.Lock()
