@@ -40,13 +40,11 @@ jobs:
       - name: Determine git current SHA and latest tag
         id: git-version
         run: |
-          GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-          if [ -n "$GIT_TAG" ]; then
-            if [[ "$GITHUB_REF" != refs/tags/* ]]; then
-              GIT_TAG=${GIT_TAG}-SNAPSHOT
-            fi
-            echo "GIT_TAG=$GIT_TAG" >> $GITHUB_OUTPUT
+          GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            GIT_TAG=${GIT_TAG}-SNAPSHOT
           fi
+          echo "GIT_TAG=$GIT_TAG" >> $GITHUB_OUTPUT
           GIT_SHA=$(git rev-parse --short HEAD)
           PR_NUM=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
           if [[ $PR_NUM != "null" ]]; then
@@ -572,7 +570,7 @@ jobs:
 
       - name: Build MSI
         env:
-          GIT_TAG: ${{ needs.git-version.outputs.git_tag }}
+          GIT_TAG: ${{ needs.git-version.outputs.git_tag || 'v0.0.0-SNAPSHOT' }}
         run: |
           rm -rf binaries/msi
           sudo GIT_TAG=$GIT_TAG release/wix/build_msi.sh ${GITHUB_WORKSPACE} 386

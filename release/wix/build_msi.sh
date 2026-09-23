@@ -4,10 +4,9 @@ FFMPEG_VERSION="7.1"
 FFMPEG_REPOSITORY=navidrome/ffmpeg-windows-builds
 DOWNLOAD_FOLDER=/tmp
 
-#Exit if GIT_TAG is not set
+# Set fallback if GIT_TAG is not set
 if [ -z "$GIT_TAG" ]; then
-  echo "GIT_TAG is not set, exiting..."
-  exit 1
+  GIT_TAG="v0.0.0-SNAPSHOT"
 fi
 
 set -e
